@@ -1,10 +1,9 @@
 import sys
-print(sys.executable)
 import os
 import logging
 from flask import Flask, request, jsonify
 
-# Add the root directory to the sys.path for absolute imports
+# Add the root directory to sys.path for absolute imports
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 # Import necessary modules from backend folder
@@ -40,78 +39,118 @@ def allowed_file(filename):
     """Check if the file has a valid extension."""
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
+@app.route('/')
+def home():
+    return 'Hello, World!'
+
+# Function to call the backend API to rank resumes
+def rank_resumes_from_folder(resumes, job_desc_text):
+    url = "https://ai-resume-api.onrender.com/rank_resumes_from_folder"  # Use deployed API URL
+    headers = {'Content-Type': 'application/json'}
+
+    # Prepare data to send in the request
+    data = {
+        'job_description': job_desc_text
+    }
+
+    try:
+        files = {}
+        for i, resume in enumerate(resumes):
+            files[f'resumes[{i}]'] = (resume['file'].name, resume['file'], resume['file'].type)
+
+        # Send POST request to the backend
+        response = requests.post(url, files=files, data=data, headers=headers)
+        
+        # Debugging response
+        st.write("API Response Code:", response.status_code)
+        st.write("API Response Text:", response.text)
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            st.error(f"Error: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        st.error(f"Failed to connect to the backend API: {e}")
+        return None
+
+
 # ✅ Upload & Parse Resume API
-@app.route("/upload_resume", methods=["POST"])
+@app.route('/upload_resume', methods=["POST"])
 def upload_resume():
     """Handles resume file upload, parsing, ranking, and insertion into the database."""
-    if "file" not in request.files:
+    if 'resume' not in request.files:
         logging.error("No file uploaded")
         return jsonify({"error": "No file uploaded"}), 400
-
-    file = request.files["file"]
+   
+    resume_file = request.files['resume']
     job_description = request.form.get("job_description", "")
 
-    if file.filename == "":
+    if resume_file.filename == '':
         logging.error("No selected file")
         return jsonify({"error": "No selected file"}), 400
 
-    if file and allowed_file(file.filename):
-        file_path = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-        try:
-            file.save(file_path)
-            logging.info(f"File saved at {file_path}")
+    try:
+        # Save the file
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], resume_file.filename)
+        resume_file.save(file_path)
+        logging.info(f"File saved at {file_path}")
 
-            # Handle missing output path correctly
-            output_path = "backend/parsed_resumes"
-            os.makedirs(output_path, exist_ok=True)
+        # Ensure output directory exists
+        output_path = "backend/parsed_resumes"
+        os.makedirs(output_path, exist_ok=True)
 
-            parsed_data = parse_resume(file_path, output_path)
-            
-            if not parsed_data:
-                logging.error("Failed to parse resume")
-                return jsonify({"error": "Failed to parse resume"}), 500
+        # Parse the resume file
+        parsed_data = parse_resume(file_path, output_path)
+        if not parsed_data:
+            logging.error("Failed to parse resume")
+            return jsonify({"error": "Failed to parse resume"}), 500
 
-            ranking_score = parsed_data.get("ranking_score", 0.0)
+        ranking_score = parsed_data.get("ranking_score", 0.0)
 
-            insert_success = insert_resume(
-                name=parsed_data.get("name", ""),
-                email=parsed_data.get("email", ""),
-                phone=parsed_data.get("phone", ""),
-                skills=", ".join(parsed_data.get("skills", [])),
-                experience=parsed_data.get("experience", ""),
-                education=parsed_data.get("education", ""),
-                file_path=file_path,
-                file_format=file.filename.rsplit(".", 1)[1],
-                job_description=job_description,
-                ranking_score=ranking_score
-            )
+        # Insert parsed resume into the database
+        insert_success = insert_resume(
+            name=parsed_data.get("name", ""),
+            email=parsed_data.get("email", ""),
+            phone=parsed_data.get("phone", ""),
+            skills=", ".join(parsed_data.get("skills", [])),
+            experience=parsed_data.get("experience", ""),
+            education=parsed_data.get("education", ""),
+            file_path=file_path,
+            file_format=resume_file.filename.rsplit(".", 1)[1],
+            job_description=job_description,
+            ranking_score=ranking_score
+        )
 
-            if insert_success:
-                logging.info("Resume uploaded and processed successfully!")
-                return jsonify({"message": "Resume uploaded and processed successfully!", "ranking_score": ranking_score}), 201
-            else:
-                logging.error("Failed to insert resume into the database")
-                return jsonify({"error": "Failed to insert resume into the database"}), 500
+        if insert_success:
+            logging.info("Resume uploaded and processed successfully!")
+            return jsonify({"message": "Resume uploaded and processed successfully!", "ranking_score": ranking_score}), 201
+        else:
+            logging.error("Failed to insert resume into the database")
+            return jsonify({"error": "Failed to insert resume into the database"}), 500
 
-        except Exception as e:
-            logging.exception("Exception in upload_resume API")
-            return jsonify({"error": str(e)}), 500
-    else:
-        logging.error("Invalid file format")
-        return jsonify({"error": "Invalid file format"}), 400
+    except Exception as e:
+        logging.exception("Exception in upload_resume API")
+        return jsonify({"error": str(e)}), 500
+
 
 # ✅ Rank Resumes from Folder API
 @app.route('/rank_resumes_from_folder', methods=['POST'])
 def rank_resumes_from_folder():
     """Process and rank all resumes in the uploads folder."""
+    logging.info("Rank Resumes API called with job description: %s", request.form.get("job_description"))
+    
     try:
-        job_description = request.json.get("job_description", "")
+        # Fix: Use form-data instead of JSON
+        job_description = request.form.get("job_description", "")
 
         if not job_description:
+            logging.error("Job description is required")
             return jsonify({"error": "Job description is required"}), 400
 
         resume_files = [f for f in os.listdir(UPLOAD_FOLDER) if allowed_file(f)]
         if not resume_files:
+            logging.warning("No resumes found in the folder")
             return jsonify({"error": "No resumes found in the folder"}), 404
 
         ranked_resumes = []
@@ -120,7 +159,7 @@ def rank_resumes_from_folder():
             file_path = os.path.join(UPLOAD_FOLDER, filename)
             logging.info(f"Processing file: {filename}")
 
-            # Handle missing output path correctly
+            # Ensure output directory exists
             output_path = "backend/parsed_resumes"
             os.makedirs(output_path, exist_ok=True)
 
@@ -146,12 +185,29 @@ def rank_resumes_from_folder():
         logging.exception("Exception in rank_resumes_from_folder API")
         return jsonify({"error": str(e)}), 500
 
+
 # ✅ API Health Check
 @app.route("/ping", methods=["GET"])
 def health_check():
     """Check if the API is running."""
     return jsonify({"message": "API is running successfully!"}), 200
 
+
+# Catch-all route for debugging
+@app.route('/<path:path>', methods=['GET', 'POST'])
+def catch_all(path):
+    logging.error(f"Request to non-existent route: {path}")
+    return jsonify({"error": f"Route {path} not found"}), 404
+
+# Log all registered routes (useful for debugging route issues)
+def log_registered_routes():
+    logging.info("Registered routes:")
+    for rule in app.url_map.iter_rules():
+        logging.info(f"Route: {rule}")
+
 if __name__ == "__main__":
+    # Log registered routes manually when the app starts
+    log_registered_routes()
+    
     # Enable debug mode for better logging
     app.run(debug=True, host="0.0.0.0", port=5000)

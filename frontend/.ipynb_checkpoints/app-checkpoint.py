@@ -31,23 +31,30 @@ def clean_text(text):
 def extract_text(uploaded_file):
     file_extension = uploaded_file.name.split(".")[-1].lower()
 
-    if file_extension == "pdf":
-        with pdfplumber.open(uploaded_file) as pdf:
-            text = "\n".join([page.extract_text() or "" for page in pdf.pages])
-    
-    elif file_extension in ["docx", "doc"]:
-        doc = Document(uploaded_file)
-        text = "\n".join([para.text for para in doc.paragraphs])
-    
-    elif file_extension in ["png", "jpg", "jpeg"]:
-        image = Image.open(uploaded_file)
-        text = pytesseract.image_to_string(image)
-    
-    elif file_extension == "txt":
-        text = uploaded_file.read().decode("utf-8", errors="ignore")
-    
-    else:
-        return "❌ Unsupported file format."
+    try:
+        if file_extension == "pdf":
+            with pdfplumber.open(uploaded_file) as pdf:
+                text = "\n".join([page.extract_text() or "" for page in pdf.pages])
+        
+        elif file_extension in ["docx", "doc"]:
+            doc = Document(uploaded_file)
+            text = "\n".join([para.text for para in doc.paragraphs])
+        
+        elif file_extension in ["png", "jpg", "jpeg"]:
+            image = Image.open(uploaded_file)
+            text = pytesseract.image_to_string(image)
+        
+        elif file_extension == "txt":
+            text = uploaded_file.read().decode("utf-8", errors="ignore")
+        
+        else:
+            return "❌ Unsupported file format."
+
+        if not text.strip():
+            return "❌ No text detected in the file."
+
+    except Exception as e:
+        return f"❌ Error extracting text: {str(e)}"
 
     return clean_text(text)
 
@@ -60,15 +67,15 @@ def rank_resumes_from_folder(resumes, job_desc_text):
     data = {
         'job_description': job_desc_text
     }
-    
+
     # Send POST request to the backend
     try:
         files = {}
         for i, resume in enumerate(resumes):
             files[f'resumes[{i}]'] = (resume['file'].name, resume['file'], resume['file'].type)
-        
+
         response = requests.post(url, files=files, data=data, headers=headers)
-        
+
         if response.status_code == 200:
             return response.json()
         else:
@@ -112,7 +119,7 @@ elif selected == "Upload Resume":
             for uploaded_file in uploaded_resumes:
                 resume_text = extract_text(uploaded_file)
 
-                if resume_text.strip():
+                if resume_text.startswith("❌"):
                     resumes.append({
                         "file": uploaded_file,
                         "text": resume_text
@@ -120,7 +127,7 @@ elif selected == "Upload Resume":
                 else:
                     resumes.append({
                         "file": uploaded_file,
-                        "text": "❌ No text detected"
+                        "text": resume_text
                     })
 
             ranked_resumes = rank_resumes_from_folder(resumes, uploaded_job_desc)
