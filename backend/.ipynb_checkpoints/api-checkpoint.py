@@ -1,79 +1,72 @@
 from flask import Flask, request, jsonify
 import os
-import PyPDF2
-import docx
-import textract
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from werkzeug.utils import secure_filename
+from resume_ranking import rank_resumes
+from tempfile import NamedTemporaryFile
 
+# Initialize the Flask app
 app = Flask(__name__)
 
-# Function to extract text from resumes
-def extract_text_from_resume(file_path):
-    text = ""
-    file_ext = os.path.splitext(file_path)[1].lower()
+# Set the folder to save uploaded files
+UPLOAD_FOLDER = './uploads'
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'docx', 'doc'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-    try:
-        if file_ext == ".pdf":
-            with open(file_path, "rb") as f:
-                pdf_reader = PyPDF2.PdfReader(f)
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
 
-        elif file_ext == ".docx":
-            doc = docx.Document(file_path)
-            for para in doc.paragraphs:
-                text += para.text + "\n"
+# Function to check allowed file extensions
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-        elif file_ext in [".txt"]:
-            with open(file_path, "r", encoding="utf-8") as f:
-                text = f.read()
 
-        elif file_ext in [".jpg", ".jpeg", ".png"]:
-            text = textract.process(file_path).decode("utf-8")
+# API endpoint to upload resumes and rank them
+@app.route('/upload_resume', methods=['POST'])
+def upload_resume():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        
+        return jsonify({"message": "File uploaded successfully", "filename": filename}), 200
+    
+    return jsonify({"error": "File type not allowed"}), 400
 
-    except Exception as e:
-        return f"Error extracting text: {str(e)}"
 
-    return text.strip()
+# API endpoint to rank resumes based on a job description
+@app.route('/rank_resumes', methods=['POST'])
+def rank_resumes_api():
+    if 'job_description' not in request.json:
+        return jsonify({"error": "Job description not provided"}), 400
 
-# Function to calculate similarity between resume and job description
-def calculate_similarity(resume_text, job_description):
-    try:
-        vectorizer = TfidfVectorizer()
-        tfidf_matrix = vectorizer.fit_transform([job_description, resume_text])
-        similarity_score = cosine_similarity(tfidf_matrix[0], tfidf_matrix[1])[0][0] * 100
-        return round(similarity_score, 2)
-    except Exception as e:
-        return f"Error in similarity calculation: {str(e)}"
+    job_description = request.json['job_description']
+    
+    # Rank resumes based on the job description
+    ranked_resumes = rank_resumes(app.config['UPLOAD_FOLDER'], job_description)
+    
+    if ranked_resumes:
+        return jsonify({
+            "ranked_resumes": [{"resume_name": resume[0], "relevance_score": resume[1]} for resume in ranked_resumes]
+        }), 200
+    else:
+        return jsonify({"error": "No resumes found or processed"}), 404
 
-# API Endpoint: Upload Resume and Analyze
-@app.route("/analyze_resume", methods=["POST"])
-def analyze_resume():
-    if "resume" not in request.files:
-        return jsonify({"error": "No resume file uploaded"}), 400
 
-    resume_file = request.files["resume"]
-    job_description = request.form.get("job_description")
+# API endpoint to check the status of the API
+@app.route('/ping', methods=['GET'])
+def ping():
+    return jsonify({"message": "API is working"}), 200
 
-    if not job_description:
-        return jsonify({"error": "Job description is required"}), 400
 
-    file_path = os.path.join("uploads", resume_file.filename)
-    resume_file.save(file_path)
-
-    resume_text = extract_text_from_resume(file_path)
-    if "Error" in resume_text:
-        return jsonify({"error": resume_text}), 400
-
-    similarity_score = calculate_similarity(resume_text, job_description)
-
-    return jsonify({
-        "filename": resume_file.filename,
-        "message": "Resume analyzed successfully!",
-        "similarity_score": similarity_score
-    })
-
-if __name__ == "__main__":
-    os.makedirs("uploads", exist_ok=True)  # Create upload folder if not exists
-    app.run(debug=True)
+# Run the Flask app
+if __name__ == '__main__':
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)  # Create upload folder if it doesn't exist
+    
+    app.run(debug=True, host='0.0.0.0', port=5000)
