@@ -48,13 +48,17 @@ def execute_query(query, values=None, fetch_one=False, fetch_all=False):
 # ✅ Insert Resume Function with Ranking Score
 def insert_resume(name, email, phone, skills, experience, education, file_path, file_format, job_description, ranking_score=0.0):
     """Insert resume details into the database."""
+    
+    # Delay the import to avoid circular import
+    from db_connection import get_db_connection
+    
     query = """
         INSERT INTO resumes (name, email, phone, skills, experience, education, file_path, file_format, job_description, ranking_score)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     """
     values = (name, email, phone, skills, experience, education, file_path, file_format, job_description, ranking_score)
     return execute_query(query, values)
-
+    
 # ✅ Update Resume Status
 def update_resume_status(resume_id, status):
     """Update the status of a resume."""
