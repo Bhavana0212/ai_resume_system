@@ -72,7 +72,7 @@ def rank_resumes_from_folder(resumes, job_desc_text):
     try:
         files = {}
         for i, resume in enumerate(resumes):
-            files[f'resumes[{i}]'] = (resume['file'].name, resume['file'], resume['file'].type)
+            files[f'resumes[{i}]'] = (resume['file'].name, resume['file'].getvalue(), resume['file'].type)
 
         response = requests.post(url, files=files, data=data, headers=headers)
 
@@ -120,10 +120,7 @@ elif selected == "Upload Resume":
                 resume_text = extract_text(uploaded_file)
 
                 if resume_text.startswith("❌"):
-                    resumes.append({
-                        "file": uploaded_file,
-                        "text": resume_text
-                    })
+                    st.error(f"Error in {uploaded_file.name}: {resume_text}")
                 else:
                     resumes.append({
                         "file": uploaded_file,
@@ -134,53 +131,55 @@ elif selected == "Upload Resume":
             
             if ranked_resumes:
                 resumes_data = ranked_resumes.get('ranked_resumes', [])
-                df = pd.DataFrame(resumes_data)
+                if resumes_data:
+                    df = pd.DataFrame(resumes_data)
 
-                df["Ranking Score"] = df["Ranking Score"].astype(float) * 100  
-                df["Ranking Score"] = df["Ranking Score"].map("{:.2f}%".format)
+                    # Format ranking scores
+                    df["Ranking Score"] = df["Ranking Score"].astype(float) * 100  
+                    df["Ranking Score"] = df["Ranking Score"].map("{:.2f}%".format)
 
-                df = df.sort_values(by="Ranking Score", ascending=False)
+                    df = df.sort_values(by="Ranking Score", ascending=False)
 
-                st.markdown("""
-                    <style>
-                        .table-container {
-                            display: flex;
-                            justify-content: center;
-                            margin-top: 30px;
-                        }
-                        .table {
-                            border: 1px solid #ddd;
-                            width: 80%;
-                            margin: 0 auto;
-                            padding: 10px;
-                            text-align: center;
-                        }
-                        .table th {
-                            background-color: #f4f4f4;
-                            color: #333;
-                            padding: 10px;
-                        }
-                        .table td {
-                            padding: 10px;
-                            border-bottom: 1px solid #ddd;
-                        }
-                        .table th, .table td {
-                            text-align: center;
-                            font-size: 16px;
-                        }
-                        .table tr:nth-child(even) {
-                            background-color: #f9f9f9;
-                        }
-                    </style>
-                """, unsafe_allow_html=True)
+                    st.markdown("""
+                        <style>
+                            .table-container {
+                                display: flex;
+                                justify-content: center;
+                                margin-top: 30px;
+                            }
+                            .table {
+                                border: 1px solid #ddd;
+                                width: 80%;
+                                margin: 0 auto;
+                                padding: 10px;
+                                text-align: center;
+                            }
+                            .table th {
+                                background-color: #f4f4f4;
+                                color: #333;
+                                padding: 10px;
+                            }
+                            .table td {
+                                padding: 10px;
+                                border-bottom: 1px solid #ddd;
+                            }
+                            .table th, .table td {
+                                text-align: center;
+                                font-size: 16px;
+                            }
+                            .table tr:nth-child(even) {
+                                background-color: #f9f9f9;
+                            }
+                        </style>
+                    """, unsafe_allow_html=True)
 
-                st.markdown('<div class="table-container">', unsafe_allow_html=True)
-                st.dataframe(df.style.set_table_attributes('class="table"'))
-                st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="table-container">', unsafe_allow_html=True)
+                    st.dataframe(df.style.set_table_attributes('class="table"'))
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-                for resume in resumes:
-                    with st.expander(f"📄 {resume['file'].name} - Extracted Text"):
-                        st.text_area("Extracted Text:", resume["text"], height=200)
+                    for resume in resumes:
+                        with st.expander(f"📄 {resume['file'].name} - Extracted Text"):
+                            st.text_area("Extracted Text:", resume["text"], height=200)
 
         else:
             st.error("⚠️ Please upload resumes and provide a job description.")

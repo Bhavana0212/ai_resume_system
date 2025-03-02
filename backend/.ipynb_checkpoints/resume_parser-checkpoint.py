@@ -4,6 +4,7 @@ import os
 import logging
 from PIL import Image
 import pytesseract
+import json  # Ensure JSON is properly handled
 
 # Setup logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,6 +16,9 @@ def parse_resume(file_path, output_path, job_description=None):
     ranking_score = 0.0  # Default ranking score
     
     try:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"The file at {file_path} does not exist.")
+
         if file_path.endswith('.pdf'):
             parsed_data = parse_pdf(file_path)
         elif file_path.endswith('.docx'):
@@ -32,8 +36,8 @@ def parse_resume(file_path, output_path, job_description=None):
         
         # Save parsed data to output path (optional)
         os.makedirs(output_path, exist_ok=True)
-        with open(os.path.join(output_path, 'parsed_data.json'), 'w') as f:
-            f.write(str(parsed_data))
+        with open(os.path.join(output_path, 'parsed_data.json'), 'w', encoding='utf-8') as f:
+            json.dump(parsed_data, f, ensure_ascii=False, indent=4)
         
         logging.debug(f"Parsed data: {parsed_data}")
         logging.debug(f"Calculated ranking score: {ranking_score}")
@@ -97,7 +101,7 @@ def parse_image(file_path):
 
 def clean_text(text):
     """Cleans unwanted characters from resume text."""
-    return text.replace('\xa0', ' ').replace('\x00', '')
+    return text.replace('\xa0', ' ').replace('\x00', '').strip()
 
 def calculate_ranking_score(resume_text, job_description=None):
     """Calculates ranking score based on matching keywords."""
@@ -119,11 +123,12 @@ def calculate_ranking_score(resume_text, job_description=None):
 
 def extract_keywords_from_job_description(job_description):
     """Extracts keywords from job description."""
+    # You can expand this with a more sophisticated keyword extraction algorithm
     return ['python', 'data analysis', 'teamwork', 'communication', 'problem-solving']
 
 if __name__ == "__main__":
-    file_path = "data/resume.pdf"
-    output_path = "path/to/output"
+    file_path = "data/resume.pdf"  # Example file path
+    output_path = "path/to/output"  # Specify the output path where parsed data will be saved
     job_description = "Looking for a software engineer with Python and ML experience."
     
     result = parse_resume(file_path, output_path, job_description)

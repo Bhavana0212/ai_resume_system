@@ -23,7 +23,7 @@ def get_db_connection():
         return psycopg2.connect(**DB_CONFIG)
     except psycopg2.Error as e:
         logging.error(f"Database connection error: {e}")
-        return None
+        raise  # Optional: raise error to halt execution, or handle it appropriately
 
 # ✅ Generic Query Executor for INSERT, UPDATE, DELETE
 def execute_query(query, values=None, fetch_one=False, fetch_all=False):
@@ -31,6 +31,7 @@ def execute_query(query, values=None, fetch_one=False, fetch_all=False):
     try:
         with closing(get_db_connection()) as conn:
             if conn is None:
+                logging.error("Connection failed.")
                 return None
             with closing(conn.cursor()) as cur:
                 cur.execute(query, values)
@@ -42,7 +43,7 @@ def execute_query(query, values=None, fetch_one=False, fetch_all=False):
                 return True
     except psycopg2.Error as e:
         logging.error(f"Database error: {e}")
-        return None
+        return None  # Optional: raise exception if critical, or provide custom error handling
 
 # ✅ Insert Resume Function with Ranking Score
 def insert_resume(name, email, phone, skills, experience, education, file_path, file_format, job_description, ranking_score=0.0):
