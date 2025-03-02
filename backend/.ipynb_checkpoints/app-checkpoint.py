@@ -6,9 +6,9 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask, request, jsonify, abort
 from werkzeug.utils import secure_filename
-from backend.resume_parser import parse_resume
-from backend.db_connection import insert_resume
-from backend.db_connection import get_db_connection
+from resume_parser import parse_resume
+from db_connection import insert_resume
+from db_connection import get_db_connection
 
 # Add the root directory to sys.path for absolute imports
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
